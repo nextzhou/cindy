@@ -73,7 +73,10 @@ import { isRemoteSessionWriteBlocked } from '../lib/remoteSessionWriteGuard';
 import { prefetchDirtyWorktreeForRemoval } from '@/lib/worktreeRemovalWarning';
 import { useSessionAttentionKind } from '@/lib/sessionAttentionStore';
 import { useSessionAttentionUrgency } from '../contexts/SessionAttentionUrgencyContext';
-import { useRemoteSessionActivity } from '@/features/device-link/remoteSessionActivityStore';
+import {
+  isRemoteSessionActivityActive,
+  useRemoteSessionActivity,
+} from '@/features/device-link/remoteSessionActivityStore';
 import { useSessionBoundSchedules, scheduleFocusPath } from '@/features/scheduler/lib/scheduleSessionBinding';
 import { loadScheduleSidebarIndexRuns } from '@/features/scheduler/lib/scheduleSidebarIndexRuns';
 import { resolveSidebarRightStatus } from './sidebarRightStatus';
@@ -161,10 +164,13 @@ export function SessionCard({
           : remoteActivity.phase === 'running'
             ? ('running' as const)
             : ('done' as const);
+  // 左侧 vendor mark 呼吸原先只看本地 running 集;远程会话的运行态只进了右侧
+  // 状态槽。并入活动镜像,与 SessionItem / 折叠 rail 同一口径。
+  const leftIconRunning = isRunning || isRemoteSessionActivityActive(remoteActivity);
   const rightStatusKind = remoteRightStatus ?? resolveSidebarRightStatus({
     attentionKind,
     isUrgentFromContext,
-    isRunning,
+    isRunning: leftIconRunning,
     hasAttentionNotification,
   });
   const isPinned = session.pinnedAt != null;
@@ -213,7 +219,13 @@ export function SessionCard({
       : null;
   const listPreview = awaitingText ?? runningDetail ?? summaryPreview;
   const cardPreview = awaitingText ?? summaryPreview;
-  const cardPreviewLineClamp = session.summary ? 3 : isRunning ? 2 : isAutomationGenerated ? 1 : 2;
+  const cardPreviewLineClamp = session.summary
+    ? 3
+    : leftIconRunning
+      ? 2
+      : isAutomationGenerated
+        ? 1
+        : 2;
   const cardTimeText = formatSidebarTime(activityIso, t);
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -240,12 +252,12 @@ export function SessionCard({
 
   // 运行结束:仅做一次卡片底色 settle 闪动作为完成提示。运行中的活动感由标题左侧
   // SessionStatusIcon 呼吸 + 底部短扫动进度条表达;完成提醒继续走 SessionStatusIcon 状态点(绿/蓝/红)。
-  const prevRunningRef = useRef(isRunning);
+  const prevRunningRef = useRef(leftIconRunning);
   const [isSettling, setIsSettling] = useState(false);
   useEffect(() => {
     const wasRunning = prevRunningRef.current;
-    prevRunningRef.current = isRunning;
-    if (isRunning) {
+    prevRunningRef.current = leftIconRunning;
+    if (leftIconRunning) {
       setIsSettling(false);
       return;
     }
@@ -253,7 +265,7 @@ export function SessionCard({
     setIsSettling(true);
     const timer = setTimeout(() => setIsSettling(false), 900);
     return () => clearTimeout(timer);
-  }, [isRunning]);
+  }, [leftIconRunning]);
   // ── rename（与 SessionItem 同款防重复提交 ref） ──
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(displayTitle);
@@ -518,7 +530,7 @@ export function SessionCard({
     <span className={CARD_TITLE_STATUS_SLOT_CLASS} aria-hidden>
       <SessionStatusIcon
         session={session}
-        isRunning={isRunning}
+        isRunning={leftIconRunning}
         isAttached={isAttached}
         hasAttentionNotification={hasAttentionNotification}
         isActive={isActive}
@@ -921,7 +933,7 @@ export function SessionCard({
         >
           <SessionStatusIcon
             session={session}
-            isRunning={isRunning}
+            isRunning={leftIconRunning}
             isAttached={isAttached}
             hasAttentionNotification={hasAttentionNotification}
             isActive={isActive}
